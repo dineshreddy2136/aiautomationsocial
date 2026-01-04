@@ -32,12 +32,13 @@ from modules.video_processor import merge_audio_video
 @click.option('--voice', '-v', default=None, help='Eleven Labs voice ID (optional)')
 @click.option('--audio-only', '-a', is_flag=True, help='Only generate Telugu audio, skip video merge')
 @click.option('--download-audio', '-d', is_flag=True, help='Only download original audio from YouTube (no dubbing)')
-@click.option('--add-music', '-m', default=None, help='Add background music to a video (provide video path)')
+@click.option('--add-music', '-m', is_flag=True, help='Add background music to video (flag for pipeline, or standalone if input provided)')
+@click.option('--input-video', '-i', default=None, help='Input video file for standalone background music mode')
 @click.option('--music-file', default=None, help='Path to music file (from audio/ folder)')
 @click.option('--music-volume', default=0.3, type=float, help='Background music volume (0.0-1.0, default: 0.3)')
 @click.option('--keep-temp', is_flag=True, help='Keep temporary files')
 def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bool, 
-         add_music: str, music_file: str, music_volume: float, keep_temp: bool):
+         add_music: bool, input_video: str, music_file: str, music_volume: float, keep_temp: bool):
     """
     Dub a YouTube video into Telugu.
     
@@ -48,15 +49,24 @@ def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bo
     print("🎬 YouTube Telugu Dubber")
     print("=" * 50)
     
-    # Add background music mode
-    if add_music:
+    # Standalone Background Music Mode
+    # Triggered if input_video is provided, OR if add_music flag is set AND no URL is provided
+    if input_video or (add_music and not url):
         from modules.video_processor import add_background_music
         
-        video_path = Path(add_music)
-        if not video_path.exists():
-            click.echo(f"❌ Video file not found: {video_path}", err=True)
-            sys.exit(1)
+        # Determine input video path
+        # Check if user passed video path to --add-music (handling legacy usage just in case, though click types changed)
+        # Since add_music is now is_flag=True, it won't capture string. 
+        # So we look at input_video.
         
+        target_video = None
+        if input_video:
+            target_video = Path(input_video)
+        
+        if not target_video or not target_video.exists():
+             click.echo(f"❌ Input video not found. Use --input-video to specify the file.", err=True)
+             sys.exit(1)
+             
         # Find music file
         if music_file:
             music_path = Path(music_file)
@@ -69,29 +79,25 @@ def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bo
                 click.echo("❌ No music files in audio/ folder. Use --download-audio first.", err=True)
                 sys.exit(1)
             
-            print("\n🎵 Available music files:")
-            for i, f in enumerate(music_files, 1):
-                print(f"  {i}. {f.name}")
-            
             # Use first file by default
             music_path = music_files[0]
-            print(f"\n  Using: {music_path.name}")
+            print(f"\n🎵 Using default music: {music_path.name}")
         
         if not music_path.exists():
             click.echo(f"❌ Music file not found: {music_path}", err=True)
             sys.exit(1)
         
         print(f"\n🎵 Adding background music...")
-        print(f"  Video: {video_path}")
+        print(f"  Video: {target_video}")
         print(f"  Music: {music_path.name}")
         print(f"  Volume: {music_volume:.0%}")
         
         if output:
             output_path = Path(output)
         else:
-            output_path = OUTPUT_DIR / f"{video_path.stem}_with_music.mp4"
+            output_path = OUTPUT_DIR / f"{target_video.stem}_with_music.mp4"
         
-        result = add_background_music(video_path, music_path, output_path, music_volume)
+        result = add_background_music(target_video, music_path, output_path, music_volume)
         print(f"\n✅ Output: {result}")
         return
     
@@ -184,10 +190,46 @@ def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bo
             print(f"🎵 Audio: {audio_output_path}")
             print("=" * 50)
         else:
-            # Full mode - merge audio with video
+            # Full-mode - merge audio with video
             print("\n🎬 Step 5/5: Creating final video...")
             
             final_video = merge_audio_video(video_path, audio_path, output_path)
+            
+            # Step 6: Add background music (Optional)
+            if add_music:
+                print("\n🎵 Step 6/6: Adding background music...")
+                from modules.video_processor import add_background_music
+                
+                 # Find music file
+                if music_file:
+                    music_path = Path(music_file)
+                    if not music_path.exists():
+                        music_path = AUDIO_DIR / music_file
+                else:
+                    # List available music files
+                    music_files = list(AUDIO_DIR.glob("*.mp3"))
+                    if not music_files:
+                        print("⚠ No music files found in audio/ folder, skipping background music.")
+                        music_path = None
+                    else:
+                        music_path = music_files[0]
+                        print(f"  Using default music: {music_path.name}")
+                
+                if music_path and music_path.exists():
+                    # Create temporary path for intermediate video
+                    temp_final = output_path.with_name(f"{output_path.stem}_temp{output_path.suffix}")
+                    shutil.move(output_path, temp_final)
+                    
+                    try:
+                        add_background_music(temp_final, music_path, output_path, music_volume)
+                        print(f"✓ Added background music (Volume: {music_volume:.0%})")
+                    except Exception as e:
+                        print(f"⚠ Failed to add background music: {e}")
+                        # Restore original if failed
+                        shutil.move(temp_final, output_path)
+                    finally:
+                        if temp_final.exists():
+                            temp_final.unlink()
             
             # Save audio file to output folder
             audio_output_path = output_path.with_suffix('.mp3')

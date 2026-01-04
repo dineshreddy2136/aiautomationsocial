@@ -16,3 +16,29 @@ to add backgroudn to video
 python main.py --add-music "test1.mp4" --music-file "suspense_52s.mp3" --music-volume 0.2
 
 python main.py --add-music "output/test1.mp4" --music-file "suspense_52s.mp3" --music-volume 0.2
+
+
+Now you can:
+
+1. Add Background Music during Full Automation: Use --add-music flag. It will use the first file in 
+audio/
+ or the one specified by --music-file.
+
+bash
+python main.py --url "..." --add-music
+# OR with specific file and volume
+python main.py --url "..." --add-music --music-file "suspense.mp3" --music-volume 0.2
+2. Add Background Music to Existing Video (Standalone): Use --input-video argument.
+
+bash
+python main.py --add-music --input-video "output/test1.mp4" --music-file "suspense.mp3"
+(Note: I updated the logic so now you must use --input-video for standalone mode instead of passing the filename to --add-music, as --add-music is now a flag).
+
+Let's test the full pipeline with music:
+
+bash
+python main.py --url "https://youtube.com/shorts/ppYYyQf9WBc" --add-music --music-file "suspense_52s.mp3" --music-volume 0.2
+(Assuming suspense_52s.mp3 is in your 
+audio/
+ folder or current path).
+
