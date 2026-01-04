@@ -177,9 +177,14 @@ def generate_audio(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # For single segment, just copy the file directly (no need for complex mixing)
+        # For single segment, run loudnorm and save
         if len(segment_files) == 1:
-            import shutil
-            shutil.copy2(segment_files[0]['path'], output_path)
+            subprocess.run([
+                'ffmpeg', '-y', '-i', str(segment_files[0]['path']),
+                '-filter:a', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+                '-c:a', 'libmp3lame',
+                str(output_path)
+            ], capture_output=True, check=True)
             print(f"✓ Generated audio: {output_path}")
             return output_path
         
@@ -209,7 +214,12 @@ def generate_audio(
         # Mix all delayed audio streams - use 'longest' duration
         if filter_parts:
             mix_inputs = ''.join(f'[a{i}]' for i in range(len(segment_files)))
-            filter_complex = ';'.join(filter_parts) + f';[0]{mix_inputs}amix=inputs={len(segment_files)+1}:duration=longest[out]'
+            # Mix, then Normalize
+            filter_complex = (
+                ';'.join(filter_parts) + 
+                f';[0]{mix_inputs}amix=inputs={len(segment_files)+1}:duration=longest[mixed];'
+                f'[mixed]loudnorm=I=-16:TP=-1.5:LRA=11[out]'
+            )
             
             cmd = ['ffmpeg', '-y'] + inputs + [
                 '-filter_complex', filter_complex,

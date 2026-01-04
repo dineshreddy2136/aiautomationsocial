@@ -184,8 +184,30 @@ def extract_transcript(
     # Try VTT subtitles first
     if subtitle_path and subtitle_path.exists():
         segments = parse_vtt_file(subtitle_path)
-        if segments:
+        
+        # QUALITY CHECK:
+        # YouTube Shorts often return 1 giant segment (e.g., 00:00 to 00:59)
+        # This ruins our ability to sync dubbing. 
+        # If any segment is longer than 15 seconds, or we have very few segments for a moderate duration,
+        # we consider the VTT "low granularity" and force Whisper.
+        
+        needs_whisper = False
+        
+        if not segments:
+            needs_whisper = True
+        else:
+            # Check for super-long segments
+            for seg in segments:
+                duration = seg.end - seg.start
+                if duration > 15.0:
+                    print(f"⚠ VTT segment too long ({duration:.1f}s) - insufficient granularity for dubbing.")
+                    needs_whisper = True
+                    break
+        
+        if not needs_whisper:
             return segments
+        else:
+            print("⚠ Falling back to Whisper for granular timestamps...")
     
     # Fallback to Whisper
     return transcribe_with_whisper(video_path, whisper_model)
