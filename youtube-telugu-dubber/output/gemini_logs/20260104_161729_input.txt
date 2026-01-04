@@ -1,0 +1,31 @@
+=== GEMINI INPUT ===
+Model: gemini-3-flash-preview
+Timestamp: 20260104_161729
+
+=== PROMPT ===
+You are a professional translator. Translate the following English text segments to Telugu.
+    
+IMPORTANT INSTRUCTIONS:
+1. Translate each segment accurately to Telugu. You can use a bit of english words here and here to sound natural as how telugu people talk naturally. 
+2. Keep translations natural and conversational
+3. Maintain the same meaning and tone.
+4. Return ONLY a JSON array with the translations
+
+Input segments:
+[
+  {
+    "index": 0,
+    "text": "Percy had just sat on a throne of pure Percy had just sat on a throne of pure gold and his legs gradually turned to gold and his legs gradually turned to gold and his legs gradually turned to Gold Annabeth anxiously told him to Gold Annabeth anxiously told him to Gold Annabeth anxiously told him to stand up however this chair was cursed stand up however this chair was cursed stand up however this chair was cursed and no one could leave once they sat on and no one could leave once they sat on and no one could leave once they sat on it as Percy turned into a golden statue it as Percy turned into a golden statue it as Percy turned into a golden statue The Shield fell from the statue's hands The Shield fell from the statue's hands The Shield fell from the statue's hands instead of taking the shield and leaving instead of taking the shield and leaving instead of taking the shield and leaving and Bev wanted to crack the mechanism of and Bev wanted to crack the mechanism of and Bev wanted to crack the mechanism of the gold Throne at that moment the god the gold Throne at that moment the god the gold Throne at that moment the god of fire suddenly appeared Vulcan blew of fire suddenly appeared Vulcan blew of fire suddenly appeared Vulcan blew his whizzle and the ladder was instantly his whizzle and the ladder was instantly his whizzle and the ladder was instantly raised now if she could only get out raised now if she could only get out raised now if she could only get out with her Shield she would be crowned with her Shield she would be crowned with her Shield she would be crowned with the highest honor but annab Beth with the highest honor but annab Beth with the highest honor but annab Beth was determined to rescue Percy all of was determined to rescue Percy all of was determined to rescue Percy all of this was achieved by Percy's voluntary this was achieved by Percy's voluntary this was achieved by Percy's voluntary sacrifice her determination impressed sacrifice her determination impressed sacrifice her determination impressed the god of fire Vulcan blew his whistle the god of fire Vulcan blew his whistle the god of fire Vulcan blew his whistle again the gold on Percy's body quickly again the gold on Percy's body quickly again the gold on Percy's body quickly faded and the curse on The Golden Throne faded and the curse on The Golden Throne faded and the curse on The Golden Throne was lifted it turns out that the curse was lifted it turns out that the curse was lifted it turns out that the curse is just a test set by the god of fire is just a test set by the god of fire is just a test set by the god of fire and the only way to pass it is to be and the only way to pass it is to be and the only way to pass it is to be faithful to each other they gave their faithful to each other they gave their faithful to each other they gave their Shields to Aries the God of War Aries Shields to Aries the God of War Aries Shields to Aries the God of War Aries prepared a truck for them and personally prepared a truck for them and personally prepared a truck for them and personally sent them to start a new adventure",
+    "start": 1.829,
+    "end": 59.559
+  }
+]
+
+Return format (JSON array only, no markdown):
+[
+  {"index": 0, "telugu": "తెలుగు అనువాదం"},
+  {"index": 1, "telugu": "తెలుగు అనువాదం"},
+  ...
+]
+
+Translate now:

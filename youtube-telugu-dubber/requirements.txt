@@ -1,0 +1,7 @@
+yt-dlp>=2024.1.0
+google-genai>=1.0.0
+elevenlabs>=1.0.0
+openai-whisper>=20231117
+ffmpeg-python>=0.2.0
+python-dotenv>=1.0.0
+click>=8.1.0

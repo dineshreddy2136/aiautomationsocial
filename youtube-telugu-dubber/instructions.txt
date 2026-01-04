@@ -1,0 +1,10 @@
+# Speed up audio 1.6x
+python merge.py -v output/test4.mp4 -a output/test4.mp3 -o output/test5.mp4 --speed 1.6
+
+# Slow down to 0.9x
+python merge.py -v output/video.mp4 -a output/audio.mp3 -o output/slower.mp4 --speed 0.9
+
+https://youtube.com/shorts/v-gYmVFCsc0?si=G-hueWgipXlPvy5m
+
+
+source venv/bin/activate && python main.py --url "https://youtube.com/shorts/mmKiV9QEQG8?si=Fqu_YH2rbrX8thRX"
