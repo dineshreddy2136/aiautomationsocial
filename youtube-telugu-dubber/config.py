@@ -27,10 +27,12 @@ AUDIO_SPEED = float(os.getenv("AUDIO_SPEED", "1.6"))  # 1.0 = normal, 1.6 = fast
 PROJECT_ROOT = Path(__file__).parent
 TEMP_DIR = PROJECT_ROOT / "temp"
 OUTPUT_DIR = PROJECT_ROOT / "output"
+AUDIO_DIR = PROJECT_ROOT / "audio"
 
 # Ensure directories exist
 TEMP_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+AUDIO_DIR.mkdir(exist_ok=True)
 
 # Whisper model (used as fallback for transcription)
 WHISPER_MODEL = "base"  # Options: tiny, base, small, medium, large

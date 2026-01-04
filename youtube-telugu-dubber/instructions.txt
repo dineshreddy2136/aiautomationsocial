@@ -8,3 +8,11 @@ https://youtube.com/shorts/v-gYmVFCsc0?si=G-hueWgipXlPvy5m
 
 
 source venv/bin/activate && python main.py --url "https://youtube.com/shorts/mmKiV9QEQG8?si=Fqu_YH2rbrX8thRX"
+
+to download audio only
+source venv/bin/activate && python main.py --url "https://youtube.com/shorts/43zJWbrGywA?si=s4raGbtbzaokSWiq" --download-audio  
+
+to add backgroudn to video
+python main.py --add-music "test1.mp4" --music-file "suspense_52s.mp3" --music-volume 0.2
+
+python main.py --add-music "output/test1.mp4" --music-file "suspense_52s.mp3" --music-volume 0.2

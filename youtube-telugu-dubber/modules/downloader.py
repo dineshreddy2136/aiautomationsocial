@@ -89,3 +89,45 @@ def download_subtitles(url: str, output_dir: Path) -> Optional[Path]:
     
     print("⚠ No subtitles available, will use Whisper fallback")
     return None
+
+
+def download_audio_only(url: str, output_dir: Path) -> Path:
+    """
+    Download only audio from YouTube video.
+    
+    Args:
+        url: YouTube video URL
+        output_dir: Directory to save the audio
+        
+    Returns:
+        Path to downloaded audio file
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': str(output_dir / '%(title)s.%(ext)s'),
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'quiet': True,
+        'no_warnings': True,
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        video_title = info.get('title', info['id'])
+        # The output file will have .mp3 extension after conversion
+        safe_title = sanitize_filename(video_title)
+        audio_path = output_dir / f"{safe_title}.mp3"
+        
+        # Find the actual downloaded file (yt-dlp may sanitize differently)
+        for file in output_dir.glob("*.mp3"):
+            if file.stat().st_mtime > (Path(__file__).stat().st_mtime - 60):
+                audio_path = file
+                break
+    
+    print(f"✓ Downloaded audio: {audio_path.name}")
+    return audio_path

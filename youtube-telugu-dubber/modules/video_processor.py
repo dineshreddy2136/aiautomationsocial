@@ -74,8 +74,82 @@ def merge_audio_video(
     return output_path
 
 
+
+
 def get_video_duration(video_path: Path) -> float:
     """Get duration of video in seconds"""
     probe = ffmpeg.probe(str(video_path))
     duration = float(probe['format']['duration'])
     return duration
+
+
+def add_background_music(
+    video_path: Path,
+    music_path: Path,
+    output_path: Path,
+    volume: float = 0.3
+) -> Path:
+    """
+    Add background music to a video.
+    
+    Args:
+        video_path: Path to video file
+        music_path: Path to music file
+        output_path: Path for output video
+        volume: Volume of background music (0.0 to 1.0)
+        
+    Returns:
+        Path to output video
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Get durations
+    video_duration = get_video_duration(video_path)
+    
+    # Inputs
+    video = ffmpeg.input(str(video_path))
+    music = ffmpeg.input(str(music_path))
+    
+    # Determine if music needs looping
+    music_probe = ffmpeg.probe(str(music_path))
+    music_duration = float(music_probe['format']['duration'])
+    
+    if music_duration < video_duration:
+        # Loop music stream
+        music = ffmpeg.input(str(music_path), stream_loop=-1)
+    
+    # Create audio mix:
+    # [0:a] is original video audio (keep it)
+    # [1:a] is background music (lowered volume)
+    # We mix them together
+    
+    # Adjust music volume and trim to video length
+    bg_music = (
+        music.audio
+        .filter('volume', volume)
+        .filter('atrim', duration=video_duration)
+    )
+    
+    # Combine original audio with background music
+    # "amix" mixes multiple audio streams. 
+    # inputs=2: mix original + bg music
+    # duration=first: match duration of first input (video)
+    # dropout_transition=0: smooth transition
+    mixed_audio = ffmpeg.filter([video.audio, bg_music], 'amix', inputs=2, duration='first', dropout_transition=0)
+    
+    (
+        ffmpeg
+        .output(
+            video.video,
+            mixed_audio,
+            str(output_path),
+            vcodec='copy',          # Copy video stream
+            acodec='aac',           # Re-encode audio
+            audio_bitrate='192k',
+            shortest=None
+        )
+        .overwrite_output()
+        .run(quiet=True)
+    )
+    
+    return output_path
