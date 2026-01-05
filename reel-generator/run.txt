@@ -1,0 +1,4 @@
+# Generate plans only (same as before)
+python main.py --url "https://youtu.be/CX5-cm0xzIw"
+# Generate plans AND cut/stitch reel videos
+python main.py --url "https://youtu.be/0YEMajcoMwU?si=Yi3VSCaxKbgQMVjN" --generate-videos

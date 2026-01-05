@@ -1,0 +1,15 @@
+# Environment
+.env
+venv/
+__pycache__/
+
+# Output
+output/
+temp/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
