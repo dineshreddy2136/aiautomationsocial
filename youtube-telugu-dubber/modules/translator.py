@@ -8,25 +8,30 @@ from typing import List
 from pathlib import Path
 from datetime import datetime
 from modules.transcript import TranscriptSegment
-from config import GEMINI_MODEL, OUTPUT_DIR
+from config import GEMINI_MODEL, OUTPUT_DIR, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 import json
 import re
 
 
-def translate_to_telugu(
+def translate_text(
     segments: List[TranscriptSegment],
-    api_key: str
+    api_key: str,
+    target_language: str = DEFAULT_LANGUAGE
 ) -> List[TranscriptSegment]:
     """
-    Translate transcript segments to Telugu using Gemini.
+    Translate transcript segments to the target language using Gemini.
     
     Args:
         segments: List of TranscriptSegment with English text
         api_key: Gemini API key
+        target_language: Language code (e.g., 'tel', 'hin', 'tam')
         
     Returns:
-        List of TranscriptSegment with Telugu text
+        List of TranscriptSegment with translated text
     """
+    # Get language name from code
+    language_name = SUPPORTED_LANGUAGES.get(target_language, "Telugu")
+    
     # Initialize client
     client = genai.Client(api_key=api_key)
     
@@ -43,16 +48,16 @@ def translate_to_telugu(
     ]
     
     prompt = f"""You are a professional dubbing script writer and translator. 
-Your task is to adapt the following English transcript segments into Telugu for a YouTube video voiceover.
+Your task is to adapt the following English transcript segments into {language_name} for a YouTube video voiceover.
 
 IMPORTANT CONSTRAINTS:
-1. **DURATION MATCHING**: Each segment has a "duration" in seconds. The Telugu translation MUST be able to be spoken naturally within that time. 
+1. **DURATION MATCHING**: Each segment has a "duration" in seconds. The {language_name} translation MUST be able to be spoken naturally within that time. 
    - If the direct translation is too long, YOU MUST SUMMARIZE OR REPHRASE it to be shorter.
    - Do NOT rush the speaker. It is better to have a shorter, concise sentence than a fast, rushed one.
    
-2. **Conversation Style**: Use natural, colloquial (spoken) Telugu. 
-   - You can use common English words (like "Time", "Mobile", "School", "Bus", "Train") if they are commonly used in daily Telugu conversation.
-   - Avoid formal/bookish Telugu. Write how a friend talks to another friend.
+2. **Conversation Style**: Use natural, colloquial (spoken) {language_name}. 
+   - You can use common English words (like "Time", "Mobile", "School", "Bus", "Train") if they are commonly used in daily {language_name} conversation.
+   - Avoid formal/bookish {language_name}. Write how a friend talks to another friend.
 
 3. **Context**: This is likely a movie recap or storytelling video. Keep the tone engaging and synchronized with the flow.
 
@@ -61,14 +66,15 @@ Input segments:
 
 Return format (JSON array only, no markdown):
 [
-  {{"index": 0, "telugu": "Condensed Telugu translation that fits duration"}},
-  {{"index": 1, "telugu": "Short and natural Telugu"}},
+  {{"index": 0, "translation": "Condensed {language_name} translation that fits duration"}},
+  {{"index": 1, "translation": "Short and natural {language_name}"}},
   ...
 ]
 
 Translate now:"""
 
-    print(f"⏳ Translating to Telugu with Gemini ({GEMINI_MODEL})...")
+
+    print(f"⏳ Translating to {language_name} with Gemini ({GEMINI_MODEL})...")
     
     # Configure safety settings to be permissive for translation
     # This is needed because movie recap content may trigger safety filters
@@ -173,15 +179,15 @@ Translate now:"""
     
     # Create translated segments
     translated_segments = []
-    translation_map = {t['index']: t['telugu'] for t in translations}
+    translation_map = {t['index']: t.get('translation', t.get('telugu', '')) for t in translations}
     
     for i, seg in enumerate(segments):
-        telugu_text = translation_map.get(i, seg.text)
+        translated_text = translation_map.get(i, seg.text)
         translated_segments.append(TranscriptSegment(
-            text=telugu_text,
+            text=translated_text,
             start=seg.start,
             end=seg.end
         ))
     
-    print(f"✓ Translated {len(translated_segments)} segments to Telugu")
+    print(f"✓ Translated {len(translated_segments)} segments to {language_name}")
     return translated_segments

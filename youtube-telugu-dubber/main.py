@@ -16,12 +16,15 @@ from config import (
     TEMP_DIR,
     OUTPUT_DIR,
     AUDIO_DIR,
+    VIDEOS_DIR,
     WHISPER_MODEL,
+    SUPPORTED_LANGUAGES,
+    DEFAULT_LANGUAGE,
     validate_config
 )
 from modules.downloader import download_video, download_subtitles
 from modules.transcript import extract_transcript
-from modules.translator import translate_to_telugu
+from modules.translator import translate_text
 from modules.tts import generate_audio
 from modules.video_processor import merge_audio_video
 
@@ -36,9 +39,13 @@ from modules.video_processor import merge_audio_video
 @click.option('--input-video', '-i', default=None, help='Input video file for standalone background music mode')
 @click.option('--music-file', default=None, help='Path to music file (from audio/ folder)')
 @click.option('--music-volume', default=0.3, type=float, help='Background music volume (0.0-1.0, default: 0.3)')
+@click.option('--language', '-l', default=DEFAULT_LANGUAGE, 
+              type=click.Choice(list(SUPPORTED_LANGUAGES.keys())), 
+              help='Target language for dubbing (default: tel)')
 @click.option('--keep-temp', is_flag=True, help='Keep temporary files')
 def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bool, 
-         add_music: bool, input_video: str, music_file: str, music_volume: float, keep_temp: bool):
+         add_music: bool, input_video: str, music_file: str, music_volume: float, 
+         language: str, keep_temp: bool):
     """
     Dub a YouTube video into Telugu.
     
@@ -153,14 +160,17 @@ def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bo
         
         print(f"   Found {len(segments)} transcript segments")
         
-        # Step 4: Translate to Telugu
-        print("\n🌐 Step 3/5: Translating to Telugu...")
-        telugu_segments = translate_to_telugu(segments, GEMINI_API_KEY)
+        # Get language name for display
+        lang_name = SUPPORTED_LANGUAGES.get(language, "Telugu")
         
-        # Step 5: Generate Telugu audio
-        print("\n🎙️ Step 4/5: Generating Telugu voiceover...")
-        audio_path = TEMP_DIR / "telugu_audio.mp3"
-        generate_audio(telugu_segments, ELEVENLABS_API_KEY, voice_id, audio_path)
+        # Step 4: Translate to target language
+        print(f"\n🌐 Step 3/5: Translating to {lang_name}...")
+        translated_segments = translate_text(segments, GEMINI_API_KEY, language)
+        
+        # Step 5: Generate voiceover
+        print(f"\n🎙️ Step 4/5: Generating {lang_name} voiceover...")
+        audio_path = TEMP_DIR / "dubbed_audio.mp3"
+        generate_audio(translated_segments, ELEVENLABS_API_KEY, voice_id, audio_path)
         
         # Determine output path
         if output:
@@ -168,9 +178,9 @@ def main(url: str, output: str, voice: str, audio_only: bool, download_audio: bo
         else:
             safe_title = "".join(c for c in video_title if c.isalnum() or c in ' -_')[:40]
             if audio_only:
-                output_path = OUTPUT_DIR / f"{safe_title}_telugu.mp3"
+                output_path = OUTPUT_DIR / f"{safe_title}_{language}.mp3"
             else:
-                output_path = OUTPUT_DIR / f"{safe_title}_telugu.mp4"
+                output_path = VIDEOS_DIR / f"{safe_title}_{language}.mp4"
         
         if audio_only:
             # Audio only mode - skip video merge

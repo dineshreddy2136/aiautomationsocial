@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Dubber</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🎬</span>
+                <span class="logo-text">YouTube Dubber</span>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-item active" data-tab="dub">
+                    <span class="nav-icon">🎙️</span>
+                    <span>Dub Video</span>
+                </li>
+                <li class="nav-item" data-tab="gallery">
+                    <span class="nav-icon">📁</span>
+                    <span>My Videos</span>
+                </li>
+                <li class="nav-item" data-tab="audio">
+                    <span class="nav-icon">🎵</span>
+                    <span>Download Audio</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dub Tab -->
+            <section id="dub-tab" class="tab-content active">
+                <h1>Dub a YouTube Video</h1>
+                <p class="subtitle">Convert YouTube videos into 12 Indian languages with AI voiceover</p>
+
+                <div class="form-container">
+                    <div class="input-group">
+                        <label for="url-input">YouTube URL</label>
+                        <input type="text" id="url-input" placeholder="https://youtube.com/shorts/..." />
+                    </div>
+
+                    <div class="input-group">
+                        <label for="language-select">Target Language</label>
+                        <select id="language-select">
+                            <option value="tel">Telugu</option>
+                            <option value="hin">Hindi</option>
+                            <option value="tam">Tamil</option>
+                            <option value="kan">Kannada</option>
+                            <option value="mal">Malayalam</option>
+                            <option value="mar">Marathi</option>
+                            <option value="ben">Bengali</option>
+                            <option value="guj">Gujarati</option>
+                            <option value="pan">Punjabi</option>
+                            <option value="asm">Assamese</option>
+                            <option value="nep">Nepali</option>
+                            <option value="snd">Sindhi</option>
+                        </select>
+                    </div>
+
+                    <div class="music-section">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="add-music" />
+                            <label for="add-music">Add Background Music</label>
+                        </div>
+
+                        <div id="music-options" class="music-options hidden">
+                            <div class="input-group">
+                                <label for="music-select">Music File</label>
+                                <select id="music-select"></select>
+                            </div>
+                            <div class="input-group">
+                                <label for="music-volume">Volume: <span id="volume-value">30</span>%</label>
+                                <input type="range" id="music-volume" min="0" max="100" value="30" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="dub-btn" class="primary-btn">
+                        <span class="btn-icon">🚀</span>
+                        <span>Start Dubbing</span>
+                    </button>
+                </div>
+
+                <!-- Progress Section -->
+                <div id="progress-section" class="progress-section hidden">
+                    <h3>Progress</h3>
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <pre id="log-output" class="log-output"></pre>
+                </div>
+
+                <!-- Result Section -->
+                <div id="result-section" class="result-section hidden">
+                    <h3>✅ Dubbing Complete!</h3>
+                    <div class="result-content">
+                        <video id="result-video" controls></video>
+                        <div class="result-actions">
+                            <a id="download-video-btn" class="secondary-btn" download>
+                                <span>📥 Download Video</span>
+                            </a>
+                            <a id="download-audio-btn" class="secondary-btn" download>
+                                <span>🎵 Download Audio</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Gallery Tab -->
+            <section id="gallery-tab" class="tab-content">
+                <h1>My Videos</h1>
+                <p class="subtitle">All your dubbed videos in one place</p>
+
+                <button id="refresh-gallery-btn" class="secondary-btn">
+                    <span>🔄 Refresh</span>
+                </button>
+
+                <div id="video-grid" class="video-grid"></div>
+
+                <!-- Video Player Modal -->
+                <div id="video-modal" class="modal hidden">
+                    <div class="modal-content modal-large">
+                        <button class="modal-close">&times;</button>
+                        <video id="modal-video" class="plyr-video" playsinline controls></video>
+                        <p id="modal-title" class="modal-title"></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Audio Download Tab -->
+            <section id="audio-tab" class="tab-content">
+                <h1>Download Audio</h1>
+                <p class="subtitle">Download background music from YouTube</p>
+
+                <div class="form-container">
+                    <div class="input-group">
+                        <label for="audio-url-input">YouTube URL</label>
+                        <input type="text" id="audio-url-input" placeholder="https://youtube.com/watch?v=..." />
+                    </div>
+
+                    <button id="download-audio-btn-main" class="primary-btn">
+                        <span class="btn-icon">📥</span>
+                        <span>Download Audio</span>
+                    </button>
+
+                    <pre id="audio-log-output" class="log-output"></pre>
+                </div>
+
+                <h3>Available Music Files</h3>
+                <ul id="music-list" class="music-list"></ul>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

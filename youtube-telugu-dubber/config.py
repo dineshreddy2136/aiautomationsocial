@@ -28,14 +28,34 @@ PROJECT_ROOT = Path(__file__).parent
 TEMP_DIR = PROJECT_ROOT / "temp"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 AUDIO_DIR = PROJECT_ROOT / "audio"
+VIDEOS_DIR = PROJECT_ROOT / "videos"
 
 # Ensure directories exist
 TEMP_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 AUDIO_DIR.mkdir(exist_ok=True)
+VIDEOS_DIR.mkdir(exist_ok=True)
 
 # Whisper model (used as fallback for transcription)
 WHISPER_MODEL = "base"  # Options: tiny, base, small, medium, large
+
+# Supported languages for dubbing
+SUPPORTED_LANGUAGES = {
+    "tel": "Telugu",
+    "hin": "Hindi",
+    "tam": "Tamil",
+    "kan": "Kannada",
+    "mal": "Malayalam",
+    "mar": "Marathi",
+    "ben": "Bengali",
+    "guj": "Gujarati",
+    "pan": "Punjabi",
+    "asm": "Assamese",
+    "nep": "Nepali",
+    "snd": "Sindhi",
+}
+
+DEFAULT_LANGUAGE = "tel"  # Telugu
 
 def validate_config():
     """Validate that required API keys are set"""
