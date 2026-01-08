@@ -1,10 +1,9 @@
 """
-Smart Reframing Module - LLM-enhanced intelligent auto-reframe
-Uses Gemini Vision API for context-aware framing decisions.
+Smart Reframing Module - Intelligent auto-reframe
+Uses YOLO object detection and motion analysis for context-aware framing decisions.
 """
 
 import cv2
-import base64
 import json
 import re
 import numpy as np
@@ -13,15 +12,9 @@ from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 import subprocess
 
-from google import genai
-from google.genai import types
-from pydantic import BaseModel, Field
-
 from modules.scene_analyzer import SceneAnalyzer, FrameAnalysis, SceneType
 
 
-# Gemini Vision model for frame analysis
-VISION_MODEL = "gemini-3-flash-preview"
 
 # Global analyzer cache to avoid reloading YOLO model for each clip
 _analyzer_cache: Optional[SceneAnalyzer] = None
@@ -35,34 +28,13 @@ def get_scene_analyzer(model_size: str = "x") -> SceneAnalyzer:
     return _analyzer_cache
 
 
-class FrameDecision(BaseModel):
-    """Single frame decision in batch response"""
-    frame_index: int = Field(description="Index of the frame (0-based)")
-    focus_x: float = Field(description="Horizontal focus point (0.0 = left, 1.0 = right)")
-    reasoning: str = Field(description="Brief explanation")
-
-
-class BatchFramingResponse(BaseModel):
-    """Pydantic model for batch frame analysis response"""
-    decisions: List[FrameDecision] = Field(description="List of framing decisions for each frame")
-
-
-@dataclass
-class LLMFramingDecision:
-    """LLM's decision on how to frame a specific moment"""
-    focus_x: float  # 0.0 = left edge, 1.0 = right edge
-    focus_y: float  # 0.0 = top edge, 1.0 = bottom edge
-    reasoning: str
-    confidence: float
-
-
 @dataclass
 class SmartKeyframe:
     """A keyframe with intelligent focus information"""
     timestamp: float
     focus_x: int  # pixel position
     focus_y: int
-    source: str  # 'face', 'person', 'motion', 'llm', 'center'
+    source: str  # 'face', 'person', 'motion', 'center'
     confidence: float
     is_scene_change: bool = False
 
@@ -76,95 +48,6 @@ class Anchor:
     source: str  # 'face', 'person', 'motion', 'center'
     start_time: float
     confidence: float
-
-
-def frame_to_base64(frame: np.ndarray, max_size: int = 512) -> str:
-    """Convert frame to base64 for LLM API, resized for efficiency"""
-    h, w = frame.shape[:2]
-    scale = min(max_size / max(h, w), 1.0)
-    if scale < 1.0:
-        frame = cv2.resize(frame, (int(w * scale), int(h * scale)))
-    
-    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    return base64.b64encode(buffer).decode('utf-8')
-
-
-def analyze_frames_batch(
-    frames: List[Tuple[float, np.ndarray]],
-    transcript_context: str,
-    api_key: str
-) -> Dict[int, LLMFramingDecision]:
-    """
-    Analyze multiple frames in a SINGLE API call.
-    
-    Args:
-        frames: List of (timestamp, frame) tuples
-        transcript_context: Context for framing decisions
-        api_key: Gemini API key
-        
-    Returns:
-        Dict mapping frame index to LLMFramingDecision
-    """
-    if not frames or not api_key:
-        return {}
-    
-    client = genai.Client(api_key=api_key)
-    
-    # Build multi-image content parts
-    parts = []
-    
-    # Add instruction text first
-    prompt = f"""You are a professional video editor. Analyze these {len(frames)} frames from a video clip and determine the optimal horizontal focus point for cropping to 9:16 vertical format.
-
-CONTEXT: "{transcript_context[:300]}"
-
-For each frame, provide:
-- frame_index: The frame number (0 to {len(frames)-1})
-- focus_x: Horizontal focus point (0.0 = left edge, 0.5 = center, 1.0 = right edge)
-- reasoning: Brief explanation (10 words max)
-
-Consider: faces, speakers, important visual elements, rule of thirds."""
-
-    parts.append(types.Part.from_text(text=prompt))
-    
-    # Add each frame as an image
-    for i, (timestamp, frame) in enumerate(frames):
-        frame_b64 = frame_to_base64(frame, max_size=384)  # Smaller for batch
-        parts.append(types.Part.from_text(text=f"\n[Frame {i} at {timestamp:.1f}s]:"))
-        parts.append(types.Part.from_bytes(
-            data=base64.b64decode(frame_b64),
-            mime_type="image/jpeg"
-        ))
-    
-    try:
-        response = client.models.generate_content(
-            model=VISION_MODEL,
-            contents=[types.Content(role="user", parts=parts)],
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=3000,  # Increased for 5 frames of JSON
-                response_mime_type="application/json",
-                response_schema=BatchFramingResponse,
-            )
-        )
-        
-        # Parse response
-        batch_result = BatchFramingResponse.model_validate_json(response.text)
-        
-        decisions = {}
-        for decision in batch_result.decisions:
-            decisions[decision.frame_index] = LLMFramingDecision(
-                focus_x=decision.focus_x,
-                focus_y=0.5,  # Default vertical center
-                reasoning=decision.reasoning,
-                confidence=0.85
-            )
-        
-        return decisions
-        
-    except Exception as e:
-        print(f"      Batch LLM analysis failed: {e}")
-        return {}
 
 
 def generate_smart_keyframes(

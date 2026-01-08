@@ -1,7 +1,6 @@
 """
-Reel Planner Module - Two-Phase Gemini System
-Phase 1: Generate 8-10 reel ideas
-Phase 2: Rate and rank ideas, select top 4
+Reel Planner Module - Single-Phase Gemini System
+Generates 4-6 sequential story parts covering the entire video chronologically.
 """
 
 import json
@@ -207,86 +206,6 @@ Generate 4-6 sequential story parts NOW:"""
     return data
 
 
-def phase2_rank_ideas(
-    client: genai.Client,
-    phase1_data: dict,
-    logs_dir: Path,
-    timestamp: str,
-    top_n: int = 4
-) -> list:
-    """
-    Phase 2: Rate and rank the reel ideas, return top N.
-    Returns ranked list with virality scores.
-    """
-    prompt = f"""You are a story quality reviewer. Review and enhance these sequential story parts.
-
-## INPUT: {len(phase1_data.get('reels', []))} Story Parts
-{json.dumps(phase1_data['reels'], indent=2)}
-
-## YOUR TASK
-1. Verify each part follows chronological order
-2. Score each part's storytelling quality (0-100)
-3. Ensure smooth transitions between parts
-4. Select the best {top_n} parts if there are more than {top_n}
-
-## SCORING CRITERIA
-
-### STORY CLARITY (40 points)
-- Does this part clearly advance the narrative?
-- Is it easy to follow without context?
-
-### PACING (30 points)
-- Does it have good rhythm (not too slow/fast)?
-- Does it end at a natural break point?
-
-### ENGAGEMENT (30 points)
-- Does it hook viewers to watch the next part?
-- Are there "can't look away" moments?
-
-## OUTPUT FORMAT (JSON only)
-{{
-  "rankings": [
-    {{
-      "original_reel_number": <from input>,
-      "rank": <chronological order: 1, 2, 3...>,
-      "virality_score": <0-100>,
-      "reasoning": "How well this part tells its segment of the story",
-      "improvements": "Suggestions for better pacing or transitions"
-    }},
-    ...
-  ],
-  "top_{top_n}_reel_numbers": [<list of part numbers to keep, up to {top_n}>]
-}}
-
-Review all story parts:"""
-
-    print(f"⏳ Phase 2: Reviewing story quality with Gemini...")
-    
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(safety_settings=_get_safety_settings())
-    )
-    
-    # Save Phase 2 logs
-    with open(logs_dir / f"{timestamp}_phase2_input.txt", 'w', encoding='utf-8') as f:
-        f.write(prompt)
-    
-    response_text = _extract_response_text(response)
-    
-    with open(logs_dir / f"{timestamp}_phase2_output.txt", 'w', encoding='utf-8') as f:
-        f.write(response_text)
-    
-    response_text = _clean_json_response(response_text)
-    
-    try:
-        ranking_data = json.loads(response_text)
-    except json.JSONDecodeError as e:
-        print(f"⚠ Error parsing Phase 2 response: {e}")
-        raise ValueError("Failed to parse Phase 2 from Gemini")
-    
-    print(f"✓ Phase 2: Ranked {len(ranking_data.get('rankings', []))} ideas")
-    return ranking_data
 
 
 def plan_reels(
