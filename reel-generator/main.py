@@ -14,11 +14,12 @@ from config import (
     GEMINI_API_KEY,
     TEMP_DIR,
     OUTPUT_DIR,
+    VIDEOS_DIR,
     WHISPER_MODEL,
     DEFAULT_REEL_DURATION,
     validate_config
 )
-from modules.downloader import download_video, download_subtitles
+from modules.downloader import download_video
 from modules.transcript import extract_transcript
 from modules.reel_planner import plan_reels, save_reel_plans
 from modules.video_cutter import generate_all_reels
@@ -41,8 +42,24 @@ def get_video_duration(video_path: Path) -> float:
 @click.option('--output', '-o', default=None, help='Output directory for reels')
 @click.option('--generate-videos', '-g', is_flag=True, 
               help='Generate reel videos (cut & stitch clips)')
+@click.option('--vertical/--landscape', default=True,
+              help='Output format: --vertical (9:16 default) or --landscape (16:9)')
+@click.option('--crop-style', '-c', 
+              type=click.Choice(['blur', 'crop-center', 'crop-top', 'crop-bottom']), 
+              default='blur',
+              help='Vertical crop style: blur (default), crop-center, crop-top, crop-bottom')
+@click.option('--auto-reframe', '-a', is_flag=True,
+              help='Use face detection to dynamically follow speaker (basic)')
+@click.option('--smart-reframe', '-s', is_flag=True,
+              help='Use intelligent reframing with YOLO (recommended)')
+@click.option('--reframe-style', type=click.Choice(['reactive', 'smooth']), default='reactive',
+              help='Reframe style: reactive (hold-and-snap, default) or smooth (continuous interpolation)')
+@click.option('--trim-bottom', '-t', default=0, type=int,
+              help='Pixels to trim from bottom of source video (for removing watermarks)')
 @click.option('--keep-temp', is_flag=True, help='Keep temporary files')
-def main(url: str, reel_duration: int, output: str, generate_videos: bool, keep_temp: bool):
+def main(url: str, reel_duration: int, output: str, generate_videos: bool, vertical: bool, 
+         crop_style: str, auto_reframe: bool, smart_reframe: bool, reframe_style: str, 
+         trim_bottom: int, keep_temp: bool):
     """
     Generate reels from a YouTube video.
     
@@ -68,14 +85,9 @@ def main(url: str, reel_duration: int, output: str, generate_videos: bool, keep_
         video_duration = get_video_duration(video_path)
         print(f"   Duration: {video_duration/60:.1f} minutes")
         
-        # Step 2: Extract transcript
-        print("\n📄 Step 2/4: Extracting transcript...")
-        subtitle_path = download_subtitles(url, TEMP_DIR)
-        segments = extract_transcript(
-            video_path=video_path,
-            subtitle_path=subtitle_path,
-            whisper_model=WHISPER_MODEL
-        )
+        # Step 2: Extract transcript with stable-ts
+        print("\n📄 Step 2/4: Extracting transcript with stable-ts...")
+        segments = extract_transcript(video_path=video_path)
         
         if not segments:
             click.echo("❌ Could not extract any transcript from the video", err=True)
@@ -113,7 +125,14 @@ def main(url: str, reel_duration: int, output: str, generate_videos: bool, keep_
                 video_path=video_path,
                 reel_plans_path=plans_path,
                 output_dir=output_dir / "reels",
-                temp_dir=TEMP_DIR / "clips"
+                temp_dir=TEMP_DIR / "clips",
+                vertical=vertical,
+                crop_style=crop_style,
+                trim_bottom=trim_bottom,
+                auto_reframe=auto_reframe,
+                smart_reframe=smart_reframe,
+                api_key=GEMINI_API_KEY,
+                reframe_style=reframe_style
             )
         else:
             print("\n⏭️  Step 4/4: Skipped (use --generate-videos to create reel videos)")
@@ -128,14 +147,22 @@ def main(url: str, reel_duration: int, output: str, generate_videos: bool, keep_
         
         for i, reel in enumerate(reel_plans):
             print(f"\n  📹 {reel.title}")
+            print(f"     🔥 Virality: {reel.virality_score}/100")
+            print(f"     🤔 Reasoning: {reel.reasoning}")
             print(f"     Clips: {len(reel.clips)} | Duration: {reel.total_duration:.1f}s")
             if reel_videos and i < len(reel_videos):
                 print(f"     Video: {reel_videos[i].name}")
             print(f"     Narration: {reel.narration_script[:60]}...")
         
-        # Cleanup
+        # Save downloaded video to videos folder
+        saved_video_path = VIDEOS_DIR / video_path.name
+        if video_path.exists() and not saved_video_path.exists():
+            shutil.copy2(video_path, saved_video_path)
+            print(f"\n💾 Saved video to: {saved_video_path}")
+        
+        # Cleanup temp files
         if not keep_temp:
-            print("\n🧹 Cleaning up temporary files...")
+            print("🧹 Cleaning up temporary files...")
             shutil.rmtree(TEMP_DIR, ignore_errors=True)
             TEMP_DIR.mkdir(exist_ok=True)
         

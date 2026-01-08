@@ -1,5 +1,9 @@
 yt-dlp>=2024.1.0
 google-genai>=1.0.0
 openai-whisper>=20231117
+stable-ts
 python-dotenv>=1.0.0
 click>=8.1.0
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+ultralytics>=8.0.0

@@ -1,198 +1,132 @@
 """
-Transcript extraction module
-Supports YouTube captions (VTT) and Whisper fallback
+Transcript extraction module using stable-ts for precise word-level timestamps.
+Uses Whisper large model for best accuracy.
 """
 
-import re
 from pathlib import Path
 from typing import List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
-class TranscriptSegment:
-    """A segment of transcript with timing"""
-    text: str
+class WordTimestamp:
+    """A single word with precise timing"""
+    word: str
     start: float  # seconds
     end: float    # seconds
     
     def to_dict(self) -> dict:
         return {
-            "text": self.text,
-            "start": round(self.start, 2),
-            "end": round(self.end, 2),
-            "duration": round(self.end - self.start, 2)
+            "word": self.word,
+            "start": round(self.start, 3),
+            "end": round(self.end, 3)
         }
 
 
-def parse_vtt_timestamp(timestamp: str) -> float:
-    """Convert VTT timestamp to seconds"""
-    parts = timestamp.strip().split(':')
+@dataclass
+class TranscriptSegment:
+    """A segment of transcript with timing and optional word-level timestamps"""
+    text: str
+    start: float  # seconds
+    end: float    # seconds
+    words: List[WordTimestamp] = field(default_factory=list)
     
-    if len(parts) == 3:
-        hours, minutes, seconds = parts
-        hours = int(hours)
-    else:
-        hours = 0
-        minutes, seconds = parts
-    
-    minutes = int(minutes)
-    seconds = float(seconds)
-    
-    return hours * 3600 + minutes * 60 + seconds
+    def to_dict(self) -> dict:
+        result = {
+            "text": self.text,
+            "start": round(self.start, 3),
+            "end": round(self.end, 3),
+            "duration": round(self.end - self.start, 3)
+        }
+        if self.words:
+            result["words"] = [w.to_dict() for w in self.words]
+        return result
 
 
-def parse_vtt_file(vtt_path: Path) -> List[TranscriptSegment]:
+def transcribe_with_stable_ts(
+    video_path: Path,
+    model_name: str = "large"
+) -> List[TranscriptSegment]:
     """
-    Parse VTT subtitle file into transcript segments.
-    
-    Args:
-        vtt_path: Path to VTT file
-        
-    Returns:
-        List of TranscriptSegment objects
-    """
-    segments = []
-    content = vtt_path.read_text(encoding='utf-8')
-    lines = content.split('\n')
-    
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        
-        # Look for timestamp line
-        timestamp_match = re.match(
-            r'(\d{1,2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})',
-            line
-        )
-        
-        if timestamp_match:
-            start = parse_vtt_timestamp(timestamp_match.group(1))
-            end = parse_vtt_timestamp(timestamp_match.group(2))
-            
-            # Collect text lines
-            text_lines = []
-            i += 1
-            while i < len(lines) and lines[i].strip() and not re.match(r'\d{1,2}:\d{2}', lines[i]):
-                text = re.sub(r'<[^>]+>', '', lines[i].strip())
-                if text:
-                    text_lines.append(text)
-                i += 1
-            
-            if text_lines:
-                full_text = ' '.join(text_lines)
-                full_text = re.sub(r'\b(\w+)( \1\b)+', r'\1', full_text)
-                
-                segments.append(TranscriptSegment(
-                    text=full_text,
-                    start=start,
-                    end=end
-                ))
-        else:
-            i += 1
-    
-    merged = merge_segments(segments)
-    print(f"✓ Parsed {len(merged)} transcript segments from VTT")
-    return merged
-
-
-def merge_segments(segments: List[TranscriptSegment], gap_threshold: float = 0.5) -> List[TranscriptSegment]:
-    """Merge consecutive segments that are close together"""
-    if not segments:
-        return []
-    
-    merged = [segments[0]]
-    
-    for segment in segments[1:]:
-        last = merged[-1]
-        
-        if segment.start - last.end < gap_threshold:
-            if segment.text.lower() != last.text.lower():
-                merged[-1] = TranscriptSegment(
-                    text=f"{last.text} {segment.text}",
-                    start=last.start,
-                    end=segment.end
-                )
-            else:
-                merged[-1] = TranscriptSegment(
-                    text=last.text,
-                    start=last.start,
-                    end=segment.end
-                )
-        else:
-            merged.append(segment)
-    
-    return merged
-
-
-def transcribe_with_whisper(video_path: Path, model_name: str = "base") -> List[TranscriptSegment]:
-    """
-    Transcribe video using Whisper (fallback method).
+    Transcribe video using stable-ts with Whisper model.
+    Provides precise word-level timestamps.
     
     Args:
         video_path: Path to video file
-        model_name: Whisper model to use
+        model_name: Whisper model to use (default: large)
         
     Returns:
-        List of TranscriptSegment objects
+        List of TranscriptSegment objects with word-level timestamps
     """
-    print(f"⏳ Transcribing with Whisper ({model_name} model)...")
+    import stable_whisper
     
-    import whisper
+    print(f"⏳ Transcribing with stable-ts (Whisper {model_name} model)...")
+    print(f"   This may take a few minutes for the first run (downloading model)...")
     
-    model = whisper.load_model(model_name)
+    # Load model
+    model = stable_whisper.load_model(model_name)
+    
+    # Transcribe with word-level timestamps
     result = model.transcribe(str(video_path))
     
     segments = []
-    for seg in result['segments']:
+    for seg in result.segments:
+        # Extract word-level timestamps
+        words = []
+        for word in seg.words:
+            words.append(WordTimestamp(
+                word=word.word,
+                start=word.start,
+                end=word.end
+            ))
+        
         segments.append(TranscriptSegment(
-            text=seg['text'].strip(),
-            start=seg['start'],
-            end=seg['end']
+            text=seg.text.strip(),
+            start=seg.start,
+            end=seg.end,
+            words=words
         ))
     
-    print(f"✓ Transcribed {len(segments)} segments with Whisper")
+    total_words = sum(len(seg.words) for seg in segments)
+    print(f"✓ Transcribed {len(segments)} segments with {total_words} word timestamps")
+    
     return segments
 
 
 def extract_transcript(
     video_path: Path,
-    subtitle_path: Optional[Path] = None,
-    whisper_model: str = "base"
+    model_name: str = "large"
 ) -> List[TranscriptSegment]:
     """
-    Extract transcript from video.
-    Uses subtitle file if available, otherwise falls back to Whisper.
+    Extract transcript from video using stable-ts.
     
     Args:
         video_path: Path to video file
-        subtitle_path: Optional path to VTT subtitle file
-        whisper_model: Whisper model to use for fallback
+        model_name: Whisper model to use (default: large)
         
     Returns:
-        List of TranscriptSegment objects
+        List of TranscriptSegment objects with word-level timestamps
     """
-    # Try VTT subtitles first
-    if subtitle_path and subtitle_path.exists():
-        segments = parse_vtt_file(subtitle_path)
-        
-        # Quality check for low-granularity subtitles
-        needs_whisper = False
-        
-        if not segments:
-            needs_whisper = True
-        else:
-            for seg in segments:
-                duration = seg.end - seg.start
-                if duration > 15.0:
-                    print(f"⚠ VTT segment too long ({duration:.1f}s) - insufficient granularity")
-                    needs_whisper = True
-                    break
-        
-        if not needs_whisper:
-            return segments
-        else:
-            print("⚠ Falling back to Whisper for granular timestamps...")
+    return transcribe_with_stable_ts(video_path, model_name)
+
+
+def format_transcript_for_llm(segments: List[TranscriptSegment], include_words: bool = True) -> str:
+    """
+    Format transcript segments for LLM consumption.
     
-    # Fallback to Whisper
-    return transcribe_with_whisper(video_path, whisper_model)
+    Args:
+        segments: List of TranscriptSegment objects
+        include_words: Whether to include word-level timestamps
+        
+    Returns:
+        Formatted string for LLM prompt
+    """
+    lines = []
+    for seg in segments:
+        lines.append(f"[{seg.start:.3f}s - {seg.end:.3f}s] {seg.text}")
+        if include_words and seg.words:
+            for word in seg.words:
+                lines.append(f"  {word.start:.3f}s - {word.end:.3f}s: \"{word.word}\"")
+            lines.append("")  # Empty line between segments
+    
+    return "\n".join(lines)

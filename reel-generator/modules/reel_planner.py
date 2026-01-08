@@ -1,16 +1,15 @@
 """
-Reel Planner Module
-Uses Gemini LLM to analyze transcript and create reel plans with:
-- Scene timestamps to cut
-- Narration scripts for each reel
+Reel Planner Module - Two-Phase Gemini System
+Phase 1: Generate 8-10 reel ideas
+Phase 2: Rate and rank ideas, select top 4
 """
 
 import json
 import re
-from typing import List
+from typing import List, Tuple
 from pathlib import Path
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from google import genai
 from google.genai import types
@@ -34,6 +33,9 @@ class ReelPlan:
     title: str
     clips: List[Clip]
     narration_script: str
+    virality_score: int = 0
+    reasoning: str = ""
+    rank: int = 0
     total_duration: float = 0.0
     
     def __post_init__(self):
@@ -43,106 +45,27 @@ class ReelPlan:
         return {
             "reel_number": self.reel_number,
             "title": self.title,
+            "virality_score": self.virality_score,
+            "reasoning": self.reasoning,
+            "rank": self.rank,
             "clips": [{"start": c.start, "end": c.end, "description": c.description} for c in self.clips],
             "narration_script": self.narration_script,
             "total_duration": round(self.total_duration, 2)
         }
 
 
-def plan_reels(
-    segments: List[TranscriptSegment],
-    api_key: str,
-    video_duration: float,
-    target_reel_duration: int = 60
-) -> List[ReelPlan]:
-    """
-    Use Gemini to analyze transcript and create reel plans.
-    
-    Args:
-        segments: List of TranscriptSegment with timestamps
-        api_key: Gemini API key
-        video_duration: Total video duration in seconds
-        target_reel_duration: Target duration for each reel (default 60s)
-        
-    Returns:
-        List of ReelPlan objects
-    """
-    client = genai.Client(api_key=api_key)
-    
-    # Prepare transcript for LLM
-    transcript_data = [seg.to_dict() for seg in segments]
-    
-    prompt = f"""You are an expert video editor and storyteller. Your task is to analyze a movie recap video transcript and create a plan for breaking it into short-form vertical reels (like Instagram Reels or TikTok).
-
-## INPUT
-- Video Duration: {video_duration:.1f} seconds ({video_duration/60:.1f} minutes)
-- Target Reel Duration: ~{target_reel_duration} seconds each
-- Transcript with timestamps:
-
-{json.dumps(transcript_data, indent=2)}
-
-## YOUR TASK
-1. Analyze the story/content in the transcript
-2. Determine how many reels are needed to tell the complete story (typically 3-5 reels for a 10-15 min video)
-3. For each reel, select the most engaging and visually interesting scenes by their timestamps
-4. Write a NEW narration script for each reel that:
-   - Is engaging and hook-driven
-   - Fits within ~{target_reel_duration} seconds when spoken
-   - Tells the story in a compelling way
-   - Uses cliffhangers between parts to encourage viewers to watch the next reel
-
-## RULES
-- Each reel should be approximately {target_reel_duration} seconds of video clips
-- Select 4-8 clips per reel, each clip 5-15 seconds long
-- Clips should be in chronological order within each reel
-- The narration should be a FRESH script, not just copying the original transcript
-- Make the narration punchy, engaging, and suitable for short-form content
-- End each reel (except the last) with a hook/cliffhanger
-
-## OUTPUT FORMAT (JSON only, no markdown)
-{{
-  "total_reels": <number>,
-  "reels": [
-    {{
-      "reel_number": 1,
-      "title": "Part 1 - [Catchy Title]",
-      "clips": [
-        {{"start": <seconds>, "end": <seconds>, "description": "Brief scene description"}},
-        ...
-      ],
-      "narration_script": "Your engaging narration script for this reel..."
-    }},
-    ...
-  ]
-}}
-
-Analyze the transcript and create the reel plan now:"""
-
-    print(f"⏳ Analyzing transcript with Gemini ({GEMINI_MODEL})...")
-    
-    # Safety settings for movie content
-    safety_settings = [
+def _get_safety_settings():
+    """Safety settings for movie content"""
+    return [
         types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
         types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
         types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
         types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
     ]
-    
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(safety_settings=safety_settings)
-    )
-    
-    # Save logs for debugging
-    logs_dir = OUTPUT_DIR / "gemini_logs"
-    logs_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    with open(logs_dir / f"{timestamp}_reel_planner_input.txt", 'w', encoding='utf-8') as f:
-        f.write(prompt)
-    
-    # Extract response text
+
+
+def _extract_response_text(response) -> str:
+    """Extract text from Gemini response"""
     response_text = None
     try:
         if hasattr(response, 'text') and response.text:
@@ -163,25 +86,238 @@ Analyze the transcript and create the reel plan now:"""
     if not response_text:
         raise ValueError("Could not extract text from Gemini response")
     
-    with open(logs_dir / f"{timestamp}_reel_planner_output.txt", 'w', encoding='utf-8') as f:
-        f.write(response_text)
-    
-    # Clean up response
+    return response_text
+
+
+def _clean_json_response(response_text: str) -> str:
+    """Clean markdown code blocks from JSON response"""
     if response_text.startswith('```'):
         response_text = re.sub(r'^```json?\n?', '', response_text)
         response_text = re.sub(r'\n?```$', '', response_text)
+    return response_text
+
+
+def phase1_generate_ideas(
+    client: genai.Client,
+    transcript_data: list,
+    video_duration: float,
+    target_reel_duration: int,
+    logs_dir: Path,
+    timestamp: str
+) -> list:
+    """
+    Phase 1: Generate 8-10 viral reel ideas.
+    Returns raw JSON data from Gemini.
+    """
+    prompt = f"""You are an expert story editor. Split this movie recap into 4-6 SEQUENTIAL PARTS that tell the complete story.
+
+## INPUT
+- Video Duration: {video_duration:.1f} seconds
+- Target Reel Duration: Each part should be {target_reel_duration}-80 seconds
+- Transcript with WORD-LEVEL TIMESTAMPS (use these for precise clip boundaries):
+{json.dumps(transcript_data, indent=2)}
+
+## YOUR MISSION
+Create 4-6 SEQUENTIAL story parts (Part 1, Part 2, etc.) that:
+1. Tell the COMPLETE story from beginning to end
+2. Follow CHRONOLOGICAL order (no jumping around)
+3. Each part is a natural story segment (not random viral clips)
+4. All parts together cover the ENTIRE video
+5. Each part ends at a natural pause/cliffhanger to encourage watching the next part
+6. Use PRECISE timestamps from the transcript word boundaries
+
+## STRUCTURE FOR EACH PART
+
+### Part 1: Introduction & Setup
+- Introduce the main character/situation
+- Set up the world and stakes
+- End with the first major conflict or hook
+
+### Parts 2-4: Rising Action
+- Continue the story chronologically
+- Build tension and stakes
+- Each part should have its own mini-climax
+- End on cliffhangers ("But little did he know...")
+
+### Final Part: Climax & Resolution
+- The main confrontation/payoff
+- Story resolution
+- Satisfying ending
+
+## CLIP RULES
+- Clips MUST be in chronological order within each part
+- Each clip: 5-15 seconds
+- Use EXACT timestamps from the transcript (word-level precision available)
+- Parts should NOT overlap in timeline
+- Include the transcript_text for each clip (exact words spoken)
+
+## SHOT TYPE GUIDELINES
+For each clip, suggest the best shot_type for vertical reframing:
+- "closeup": Emotional moments, single speaker, dramatic reveals, tension
+- "wide": Establishing shots, landscapes, no humans, scene transitions, reveals
+- "group": Multiple people (3+), reactions, conversations, crowd scenes
+- "focus": Default tracking of 1-2 people, action sequences
+
+## OUTPUT FORMAT (JSON only)
+{{
+  "total_parts": <4-6>,
+  "reels": [
+    {{
+      "reel_number": 1,
+      "title": "Part 1: [Story Phase Title]",
+      "story_summary": "What happens in this part",
+      "clips": [
+        {{"start": <seconds>, "end": <seconds>, "transcript_text": "exact words spoken", "description": "...", "shot_type": "focus"}},
+        ...
+      ],
+      "narration_script": "60-80 second narration for this part...",
+      "cliffhanger": "How this part ends to hook viewers for Part 2"
+    }}
+  ]
+}}
+
+Generate 4-6 sequential story parts NOW:"""
+
+    print(f"⏳ Phase 1: Generating 4-6 story parts with Gemini ({GEMINI_MODEL})...")
     
-    # Parse JSON
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(safety_settings=_get_safety_settings())
+    )
+    
+    # Save Phase 1 logs
+    with open(logs_dir / f"{timestamp}_phase1_input.txt", 'w', encoding='utf-8') as f:
+        f.write(prompt)
+    
+    response_text = _extract_response_text(response)
+    
+    with open(logs_dir / f"{timestamp}_phase1_output.txt", 'w', encoding='utf-8') as f:
+        f.write(response_text)
+    
+    response_text = _clean_json_response(response_text)
+    
     try:
         data = json.loads(response_text)
     except json.JSONDecodeError as e:
-        print(f"⚠ Error parsing Gemini response: {e}")
-        print(f"Response was: {response_text[:500]}...")
-        raise ValueError("Failed to parse reel plan from Gemini")
+        print(f"⚠ Error parsing Phase 1 response: {e}")
+        raise ValueError("Failed to parse Phase 1 from Gemini")
     
-    # Convert to ReelPlan objects
+    print(f"✓ Phase 1: Generated {len(data.get('reels', []))} story parts")
+    return data
+
+
+def phase2_rank_ideas(
+    client: genai.Client,
+    phase1_data: dict,
+    logs_dir: Path,
+    timestamp: str,
+    top_n: int = 4
+) -> list:
+    """
+    Phase 2: Rate and rank the reel ideas, return top N.
+    Returns ranked list with virality scores.
+    """
+    prompt = f"""You are a story quality reviewer. Review and enhance these sequential story parts.
+
+## INPUT: {len(phase1_data.get('reels', []))} Story Parts
+{json.dumps(phase1_data['reels'], indent=2)}
+
+## YOUR TASK
+1. Verify each part follows chronological order
+2. Score each part's storytelling quality (0-100)
+3. Ensure smooth transitions between parts
+4. Select the best {top_n} parts if there are more than {top_n}
+
+## SCORING CRITERIA
+
+### STORY CLARITY (40 points)
+- Does this part clearly advance the narrative?
+- Is it easy to follow without context?
+
+### PACING (30 points)
+- Does it have good rhythm (not too slow/fast)?
+- Does it end at a natural break point?
+
+### ENGAGEMENT (30 points)
+- Does it hook viewers to watch the next part?
+- Are there "can't look away" moments?
+
+## OUTPUT FORMAT (JSON only)
+{{
+  "rankings": [
+    {{
+      "original_reel_number": <from input>,
+      "rank": <chronological order: 1, 2, 3...>,
+      "virality_score": <0-100>,
+      "reasoning": "How well this part tells its segment of the story",
+      "improvements": "Suggestions for better pacing or transitions"
+    }},
+    ...
+  ],
+  "top_{top_n}_reel_numbers": [<list of part numbers to keep, up to {top_n}>]
+}}
+
+Review all story parts:"""
+
+    print(f"⏳ Phase 2: Reviewing story quality with Gemini...")
+    
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(safety_settings=_get_safety_settings())
+    )
+    
+    # Save Phase 2 logs
+    with open(logs_dir / f"{timestamp}_phase2_input.txt", 'w', encoding='utf-8') as f:
+        f.write(prompt)
+    
+    response_text = _extract_response_text(response)
+    
+    with open(logs_dir / f"{timestamp}_phase2_output.txt", 'w', encoding='utf-8') as f:
+        f.write(response_text)
+    
+    response_text = _clean_json_response(response_text)
+    
+    try:
+        ranking_data = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        print(f"⚠ Error parsing Phase 2 response: {e}")
+        raise ValueError("Failed to parse Phase 2 from Gemini")
+    
+    print(f"✓ Phase 2: Ranked {len(ranking_data.get('rankings', []))} ideas")
+    return ranking_data
+
+
+def plan_reels(
+    segments: List[TranscriptSegment],
+    api_key: str,
+    video_duration: float,
+    target_reel_duration: int = 60,
+    top_n: int = 4
+) -> List[ReelPlan]:
+    """
+    Single-phase reel planning for sequential story mode.
+    Generates 4-6 story parts covering the entire video chronologically.
+    """
+    client = genai.Client(api_key=api_key)
+    transcript_data = [seg.to_dict() for seg in segments]
+    
+    # Setup logging
+    logs_dir = OUTPUT_DIR / "gemini_logs"
+    logs_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Generate story parts (no Phase 2 ranking for sequential mode)
+    phase1_data = phase1_generate_ideas(
+        client, transcript_data, video_duration, 
+        target_reel_duration, logs_dir, timestamp
+    )
+    
+    # Convert all story parts to ReelPlan objects
     reel_plans = []
-    for reel_data in data.get('reels', []):
+    
+    for reel_data in phase1_data.get('reels', []):
         clips = [
             Clip(
                 start=clip['start'],
@@ -192,14 +328,25 @@ Analyze the transcript and create the reel plan now:"""
         ]
         
         reel_plan = ReelPlan(
-            reel_number=reel_data['reel_number'],
-            title=reel_data.get('title', f"Part {reel_data['reel_number']}"),
+            reel_number=reel_data.get('reel_number', len(reel_plans) + 1),
+            title=reel_data.get('title', f"Part {len(reel_plans) + 1}"),
+            virality_score=85,  # Default score for story parts
+            reasoning=reel_data.get('story_summary', ''),
+            rank=reel_data.get('reel_number', len(reel_plans) + 1),
             clips=clips,
             narration_script=reel_data.get('narration_script', '')
         )
         reel_plans.append(reel_plan)
     
-    print(f"✓ Created {len(reel_plans)} reel plans")
+    # Limit to top_n if more were generated
+    if len(reel_plans) > top_n:
+        reel_plans = reel_plans[:top_n]
+    
+    # Renumber sequentially
+    for i, reel in enumerate(reel_plans):
+        reel.reel_number = i + 1
+    
+    print(f"✓ Final: {len(reel_plans)} story parts ready for cutting")
     return reel_plans
 
 
