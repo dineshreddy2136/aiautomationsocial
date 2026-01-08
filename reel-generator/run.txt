@@ -1,68 +1,24 @@
-# =====================================================
 # REEL GENERATOR - QUICK REFERENCE
-# =====================================================
 
-./venv/bin/python
+# ACTIVATE VENV (run this first)
+source venv/bin/activate
 
-# ----- FULL PIPELINE (Download + Transcript + AI Plan + Cut Videos) -----
-python main.py --url "https://youtu.be/VIDEO_ID" --generate-videos
+# FULL PIPELINE (Download → Transcript → AI Plan → Cut Videos)
+python main.py --url "https://youtu.be/ygKDapeYOSc?si=trGirNJiin4ewbQw" --generate-videos
 
-# With options:
-python main.py --url "https://youtu.be/VIDEO_ID" --generate-videos --crop-style crop-center --trim-bottom 50
-
-
-# ----- PLAN ONLY (No video cutting) -----
+# PLAN ONLY (No video cutting)
 python main.py --url "https://youtu.be/VIDEO_ID"
 
-
-# ----- CUT REELS FROM EXISTING PLAN -----
+# CUT FROM EXISTING PLAN
 python cut_reels.py --video videos/video.mp4 --plan output/FOLDER/reel_plans.json
 
-# With options:
-python cut_reels.py --video videos/video.mp4 --plan output/FOLDER/reel_plans.json --crop-style crop-center --trim-bottom 50
-
-python cut_reels.py --video videos/video_cropped.mp4 --plan output/zombie/reel_plans.json --crop-style blur
-
-
-# ----- AUTO-REFRAME (Basic Face Detection) -----
-# Simple face tracking without LLM intelligence
-python main.py --url "https://youtu.be/VIDEO_ID" --generate-videos --auto-reframe
-
+# WITH SMART REFRAME (Recommended - uses YOLO for intelligent cropping)
 python main.py --url "https://youtu.be/VIDEO_ID" --generate-videos --smart-reframe
-
-python cut_reels.py --video videos/video.mp4 --plan output/FOLDER/reel_plans.json --auto-reframe
-
-
-# ----- SMART REFRAME (LLM-Enhanced - Recommended) -----
-# Uses YOLO v8x + Gemini Vision for intelligent scene-aware reframing
-# Understands dialogue vs action scenes, uses transcript context
-python main.py --url "https://youtu.be/VIDEO_ID" --generate-videos --smart-reframe
-
 python cut_reels.py --video videos/video.mp4 --plan output/FOLDER/reel_plans.json --smart-reframe
 
-# Smart reframe with trim bottom (remove watermarks)
-python cut_reels.py --video videos/video.mp4 --plan output/FOLDER/reel_plans.json --smart-reframe --trim-bottom 50
-
-
-# ----- CROP VIDEO BOTTOM (Standalone - remove watermarks) -----
-ffmpeg -i videos/video.mp4 -vf "crop=iw:ih-50:0:0" -c:a copy videos/video_cropped.mp4
-# Change 50 to crop more/less pixels
-
-
-# ----- CHECK VIDEO RESOLUTION -----
-ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 videos/video.mp4
-
-
-# =====================================================
-# OPTIONS REFERENCE
-# =====================================================
-# --crop-style OPTIONS:
-#   blur         = Fit video in center with blurred background (default)
-#   crop-center  = Center crop to 9:16 (cuts off sides)
-#   crop-top     = Focus on top of video (cuts off bottom)
-#   crop-bottom  = Focus on bottom of video (cuts off top)
-#
-# --auto-reframe   = Basic face detection tracking
-# --smart-reframe  = LLM-enhanced intelligent reframing (YOLO + Gemini Vision)
-# --trim-bottom 50 = Crop 50 pixels from bottom of source (for watermarks)
-# --landscape      = Keep landscape format (no vertical conversion)
+# OPTIONS
+# --crop-style blur|crop-center|crop-top|crop-bottom
+# --auto-reframe    Basic face tracking
+# --smart-reframe   YOLO-based intelligent reframing (recommended)
+# --trim-bottom 50  Remove watermarks (crop N pixels from bottom)
+# --landscape       Keep 16:9 format instead of vertical
